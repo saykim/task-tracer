@@ -198,6 +198,7 @@ footer span{font-family:var(--mono)}
 <main class="wrap">
   <!-- ============ 목록 ============ -->
   <section id="v-list">
+    <div id="warn" hidden></div>
     <div class="kpis" id="kpis"></div>
 
     <div class="bar">
@@ -226,6 +227,15 @@ footer span{font-family:var(--mono)}
   <!-- ============ 백업·점검 ============ -->
   <section id="v-data" hidden>
     <div class="dcols">
+      <div class="card">
+        <div class="pad">
+          <h3 class="mini">자동 저장</h3>
+          <p>폴더를 한 번만 지정하면 과제를 추가·수정할 때마다 그 폴더에 자동으로 기록합니다. 하루 한 번 일자별 스냅샷도 남겨 잘못 지웠을 때 되돌릴 수 있습니다.</p>
+          <div class="bar" style="margin:0" id="auto-btns"></div>
+          <p id="auto-info" class="mono" style="margin-top:10px"></p>
+        </div>
+      </div>
+
       <div class="card">
         <div class="pad">
           <h3 class="mini">JSON 백업</h3>
@@ -293,6 +303,9 @@ footer span{font-family:var(--mono)}
 const DAY = 86400000;
 const STATUS = ["계획","진행","보류","완료","중단"];
 const LOGTYPE = ["진척","이슈","의사결정"];
+const AUTO_FILE = "task-tracker.json";   // 자동 저장 대상 — 항상 최신 상태로 덮어쓴다
+const SNAP_KEEP = 14;                    // 일자별 스냅샷 보관 개수
+const WARN_DAYS = 7;                     // 백업이 이만큼 밀리면 경고한다
 
 function today(){ const d=new Date(); return ymd(d); }
 function ymd(d){
@@ -424,23 +437,38 @@ function summarize(list){
   return s;
 }
 
+/** 레코드 id 허용 형식 — uid()가 만드는 값의 범위. 백업으로 들어오는 값은 신뢰하지 않는다 */
+function okId(x){ return !!x && typeof x.id==="string" && /^[A-Za-z0-9_-]{1,64}$/.test(x.id); }
+
 /** 백업 파일 형태 검증 및 정규화 */
 function parseBackup(raw){
   let o;
   try{ o=JSON.parse(raw); }catch(err){ throw new Error("JSON 형식이 아닙니다."); }
   if(!o || typeof o!=="object") throw new Error("내용이 비어 있습니다.");
   if(!Array.isArray(o.projects)) throw new Error("projects 배열이 없습니다.");
-  return {
+  const r={
     schema: o.schema||1,
     projects: o.projects,
     logs: Array.isArray(o.logs)? o.logs : [],
     milestones: Array.isArray(o.milestones)? o.milestones : [],
     memos: Array.isArray(o.memos)? o.memos : []   // schema 1 백업에는 없다
   };
+  // id가 화면의 onclick에 그대로 들어가므로 형식을 어기는 파일은 통째로 거부한다
+  if(![].concat(r.projects,r.logs,r.milestones,r.memos).every(okId))
+    throw new Error("레코드 id 형식이 올바르지 않습니다. 손상되었거나 신뢰할 수 없는 파일입니다.");
+  return r;
 }
 function mergeById(cur,inc){
   const seen=new Set(cur.map(x=>x.id));
   return cur.concat(inc.filter(x=>x&&x.id&&!seen.has(x.id)));
+}
+
+/** 일자별 스냅샷 파일명 — YYYYMMDD라 이름순 정렬이 곧 날짜순이다 */
+function snapName(d){ return "task-tracker_"+String(d).replace(/-/g,"")+".json"; }
+/** 보관 한도를 넘긴 스냅샷 — 오래된 것부터 버린다. 다른 파일은 건드리지 않는다 */
+function oldSnaps(names,keep){
+  const s=(names||[]).filter(n=>/^task-tracker_\d{8}\.json$/.test(n)).sort();
+  return s.length>keep ? s.slice(0,s.length-keep) : [];
 }
 //#endregion PURE
 
@@ -471,8 +499,17 @@ function req(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); 
 
 async function allOf(db,store){ return req(tx(db,[store],"readonly").objectStore(store).getAll()); }
 async function byProject(db,store,pid){ return req(tx(db,[store],"readonly").objectStore(store).index("by_project").getAll(pid)); }
-async function put(db,store,val){ const tr=tx(db,[store],"readwrite"); tr.objectStore(store).put(val); await done(tr); return val; }
-async function del(db,store,id){ const tr=tx(db,[store],"readwrite"); tr.objectStore(store).delete(id); await done(tr); }
+// meta(S.K)는 자동 저장에서 제외한다 — 저장 스탬프를 쓰면서 다시 자동 저장이 도는 것을 막는다
+async function put(db,store,val){ const tr=tx(db,[store],"readwrite"); tr.objectStore(store).put(val); await done(tr); if(store!==S.K) autoSave(db); return val; }
+async function del(db,store,id){ const tr=tx(db,[store],"readwrite"); tr.objectStore(store).delete(id); await done(tr); if(store!==S.K) autoSave(db); }
+
+/** 자동 저장 폴더 핸들 — 구조화 복제가 되므로 meta에 그대로 넣어 세션 간 보관한다 */
+async function getMeta(db,key){ return req(tx(db,[S.K],"readonly").objectStore(S.K).get(key)); }
+async function writeFile(dir,name,text){
+  const fh=await dir.getFileHandle(name,{create:true});
+  const w=await fh.createWritable();     // 임시 파일에 쓰고 close 시점에 원자적으로 교체된다
+  await w.write(text); await w.close();
+}
 
 /** 과제 삭제 = 하위 기록·마일스톤·메모 연쇄 삭제 */
 async function deleteProject(db,pid){
@@ -483,6 +520,7 @@ async function deleteProject(db,pid){
   ms.forEach(x=>tr.objectStore(S.M).delete(x.id));
   mos.forEach(x=>tr.objectStore(S.MO).delete(x.id));
   await done(tr);
+  autoSave(db);
 }
 async function dumpAll(db){
   const [projects,logs,milestones,memos]=await Promise.all([allOf(db,S.P),allOf(db,S.L),allOf(db,S.M),allOf(db,S.MO)]);
@@ -501,6 +539,7 @@ async function loadAll(db,data,mode){
   M.forEach(x=>tr.objectStore(S.M).put(x));
   MO.forEach(x=>tr.objectStore(S.MO).put(x));
   await done(tr);
+  autoSave(db);
   return {p:P.length,l:L.length,m:M.length,mo:MO.length};
 }
 /** 과제 저장 시 메모 변경분 반영 — 삭제된 id 정리 후 현재 목록을 그대로 기록 */
@@ -509,6 +548,7 @@ async function syncMemos(db,pid,memos,removedIds){
   (removedIds||[]).forEach(id=>tr.objectStore(S.MO).delete(id));
   memos.forEach(x=>{ const {_new,...rec}=x; tr.objectStore(S.MO).put({...rec,projectId:pid}); });
   await done(tr);
+  autoSave(db);
 }
 
 /* =====================================================================
@@ -516,10 +556,14 @@ async function syncMemos(db,pid,memos,removedIds){
    ===================================================================== */
 const uid=()=> (Date.now().toString(36)+Math.random().toString(36).slice(2,8));
 const esc=s=> String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/** onclick 안의 JS 문자열에 넣을 id. 속성 디코딩이 JS 파싱보다 먼저라 esc()로는 못 막는다 — 문자 자체를 제한한다 */
+const jid=s=> String(s==null?"":s).replace(/[^A-Za-z0-9_-]/g,"");
 const $=id=>document.getElementById(id);
 
 let DB=null, PROJ=[], VIEW="list", CUR=null;
 let F={q:"",div:"",dept:"",st:"",late:false,sort:"targetDate",desc:false};
+// AUTO = 쓰기 권한이 확인된 폴더, AUTO_H = 저장돼 있으나 아직 권한 재확인 전인 폴더
+let AUTO=null, AUTO_H=null, AUTO_T=null, LASTBK=null, PERSIST=false;
 
 const COLS=[
   {k:"status",  t:"상태",     w:""},
@@ -602,7 +646,7 @@ function renderList(){
       const d=derive(p);
       return "<tr>"
         + '<td><span class="bg bg-'+esc(p.status)+'">'+esc(p.status)+"</span></td>"
-        + '<td class="name"><button class="link" onclick="openDetail(\''+p.id+'\')">'+esc(p.name)+"</button><em>"+esc(p.code||"")+(p.owner?" · "+esc(p.owner):"")+"</em></td>"
+        + '<td class="name"><button class="link" onclick="openDetail(\''+jid(p.id)+'\')">'+esc(p.name)+"</button><em>"+esc(p.code||"")+(p.owner?" · "+esc(p.owner):"")+"</em></td>"
         + "<td>"+esc(p.division||"-")+"</td>"
         + "<td>"+esc(p.reqDept||"-")+"</td>"
         + "<td>"+esc((p.relDepts||[]).join(", ")||"-")+"</td>"
@@ -619,6 +663,7 @@ function renderList(){
     }).join("");
   }
   $("ft-cnt").textContent="표시 "+rows.length+" / 전체 "+PROJ.length+"건";
+  renderWarn();
 }
 function kpi(label,val,sub,bad){ return '<div class="kpi'+(bad?" is-late":"")+'"><small>'+esc(label)+"</small><b>"+esc(val)+"</b><u>"+esc(sub||"")+"</u></div>"; }
 function uniq(a){ return [...new Set(a.filter(x=>x&&String(x).trim()))].sort((x,y)=>String(x).localeCompare(String(y),"ko")); }
@@ -647,8 +692,8 @@ function renderDetail(p,logs,ms,memos){
   const el=$("v-detail");
   el.innerHTML=
    '<div class="bar"><button class="btn" onclick="go(\'list\')">← 전체 과제</button><span class="spacer"></span>'
-  + '<button class="btn" onclick="openEdit(\''+p.id+'\')">과제 수정</button>'
-  + '<button class="btn btn-d" onclick="removeProject(\''+p.id+'\')">삭제</button></div>'
+  + '<button class="btn" onclick="openEdit(\''+jid(p.id)+'\')">과제 수정</button>'
+  + '<button class="btn btn-d" onclick="removeProject(\''+jid(p.id)+'\')">삭제</button></div>'
 
   + '<div class="card" style="margin-bottom:14px">'
   +   '<div class="dh"><div style="flex:1"><div class="code">'+esc(p.code||"")+"</div><h1>"+esc(p.name)+"</h1></div>"
@@ -709,7 +754,7 @@ function logHTML(logs){
     + '<span class="c"><span class="t '+esc(l.type)+'">'+esc(l.type)+"</span>"+esc(l.content)
     + (l.progress!==null&&l.progress!==undefined&&l.progress!==""? ' <span class="num" style="color:var(--accent)">('+l.progress+"%)</span>":"")
     + (l.next? '<span class="next">'+esc(l.next)+"</span>":"")+"</span>"
-    + '<button class="btn btn-s btn-d" onclick="removeLog(\''+l.id+'\')">삭제</button>'
+    + '<button class="btn btn-s btn-d" onclick="removeLog(\''+jid(l.id)+'\')">삭제</button>'
     + "</li>").join("")+"</ul>";
 }
 function msHTML(ms){
@@ -721,9 +766,9 @@ function msHTML(ms){
     return "<li><span class='dot "+cls+"'></span>"
       + "<span class='nm'>"+esc(x.name)+"</span>"
       + "<span class='dt'>계획 "+esc(x.planDate||"-")+" / 실적 "+esc(x.actualDate||"-")+"</span>"
-      + (x.actualDate? '<button class="btn btn-s" onclick="toggleMs(\''+x.id+'\')">되돌리기</button>'
-                     : '<button class="btn btn-s" onclick="toggleMs(\''+x.id+'\')">완료</button>')
-      + '<button class="btn btn-s btn-d" onclick="removeMs(\''+x.id+'\')">삭제</button></li>';
+      + (x.actualDate? '<button class="btn btn-s" onclick="toggleMs(\''+jid(x.id)+'\')">되돌리기</button>'
+                     : '<button class="btn btn-s" onclick="toggleMs(\''+jid(x.id)+'\')">완료</button>')
+      + '<button class="btn btn-s btn-d" onclick="removeMs(\''+jid(x.id)+'\')">삭제</button></li>';
   }).join("")+"</ul>";
 }
 function sparkHTML(p,logs){
@@ -832,7 +877,7 @@ function renderMemoEdit(){
     : '<ul class="memos box">'+MEMOS.map(x=>
         "<li>"+'<span class="d">'+esc(x.date)+"</span>"
         + '<span class="c">'+esc(x.content)+"</span>"
-        + '<button class="btn btn-s btn-d" onclick="dropMemo(\''+x.id+'\')">삭제</button>'
+        + '<button class="btn btn-s btn-d" onclick="dropMemo(\''+jid(x.id)+'\')">삭제</button>'
         + "</li>").join("")+"</ul>";
 }
 function addMemo(){
@@ -873,6 +918,105 @@ async function saveEdit(){
   toast(EDIT_ID?"과제를 수정했습니다.":"과제를 등록했습니다.");
 }
 
+/* ---------- 자동 저장 ---------- */
+/** 변경 직후 호출 — 연속 입력은 모았다가 한 번만 기록한다 */
+function autoSave(db){
+  if(db!==DB || !AUTO) return;
+  clearTimeout(AUTO_T);
+  AUTO_T=setTimeout(flushAuto,2500);
+}
+let FLUSHING=false;
+async function flushAuto(){
+  if(!AUTO || FLUSHING) return;
+  FLUSHING=true;
+  try{
+    // 세션 중에도 권한이 회수될 수 있다 — 쓰기 직전에 확인한다
+    if(await AUTO.queryPermission({mode:"readwrite"})!=="granted"){ AUTO=null; renderAuto(); renderWarn(); return; }
+    const txt=JSON.stringify(await dumpAll(DB),null,2);
+    await writeFile(AUTO,AUTO_FILE,txt);
+    await snapshot(txt);
+    await stampBackup(true);
+  }catch(e){
+    toast("자동 저장 실패: "+e.message);
+  }finally{ FLUSHING=false; }
+}
+/** 하루 한 번만 스냅샷을 남기고 보관 한도를 넘긴 옛 파일을 지운다 */
+async function snapshot(txt){
+  const d=today();
+  const last=await getMeta(DB,"lastSnap");
+  if(last && last.date===d) return;
+  await writeFile(AUTO,snapName(d),txt);
+  await put(DB,S.K,{key:"lastSnap",date:d});
+  const names=[];
+  for await(const n of AUTO.keys()) names.push(n);
+  for(const n of oldSnaps(names,SNAP_KEEP)) await AUTO.removeEntry(n);
+}
+async function pickAuto(){
+  if(!window.showDirectoryPicker) return toast("이 브라우저는 자동 저장을 지원하지 않습니다.");
+  let dir;
+  try{ dir=await window.showDirectoryPicker({id:"tt-backup",mode:"readwrite",startIn:"documents"}); }
+  catch(e){ return; }                                  // 사용자가 취소한 경우
+  if(await dir.requestPermission({mode:"readwrite"})!=="granted") return toast("폴더 쓰기 권한이 필요합니다.");
+  AUTO=dir; AUTO_H=dir;
+  await put(DB,S.K,{key:"autoDir",handle:dir,at:new Date().toISOString()});
+  await flushAuto();
+  renderAuto(); renderWarn();
+  toast("자동 저장을 켰습니다 — "+dir.name);
+}
+async function stopAuto(){
+  AUTO=null; AUTO_H=null;
+  await del(DB,S.K,"autoDir");
+  renderAuto(); renderWarn();
+  toast("자동 저장을 껐습니다.");
+}
+/** 새 세션에서는 권한이 'prompt'로 돌아간다 — 재승인은 사용자 클릭 없이는 불가능하다 */
+async function resumeAuto(){
+  const rec=await getMeta(DB,"autoDir");
+  if(!rec || !rec.handle) return;
+  AUTO_H=rec.handle;
+  try{ if(await AUTO_H.queryPermission({mode:"readwrite"})==="granted") AUTO=AUTO_H; }catch(e){}
+}
+async function grantAuto(){
+  if(!AUTO_H) return;
+  try{
+    if(await AUTO_H.requestPermission({mode:"readwrite"})!=="granted") return toast("권한이 거부되었습니다.");
+  }catch(e){ return toast("권한 요청 실패: "+e.message); }
+  AUTO=AUTO_H;
+  await flushAuto();
+  renderAuto(); renderWarn();
+  toast("자동 저장을 다시 연결했습니다.");
+}
+function renderAuto(){
+  const b=$("auto-btns"), i=$("auto-info");
+  if(!b) return;
+  if(!window.showDirectoryPicker){
+    b.innerHTML="";
+    i.textContent="이 브라우저는 자동 저장을 지원하지 않습니다. Chrome·Edge에서 열거나 주 1회 직접 내보내기 하세요.";
+  }else if(AUTO){
+    b.innerHTML='<button class="btn" onclick="flushAuto()">지금 저장</button><button class="btn btn-d" onclick="stopAuto()">자동 저장 끄기</button>';
+    i.textContent="켜짐 — "+AUTO.name+" 폴더에 "+AUTO_FILE+" 기록, 일자별 스냅샷 "+SNAP_KEEP+"개 보관";
+  }else if(AUTO_H){
+    b.innerHTML='<button class="btn btn-p" onclick="grantAuto()">폴더 다시 연결</button><button class="btn btn-d" onclick="stopAuto()">해제</button>';
+    i.textContent="연결 끊김 — "+AUTO_H.name+" 폴더 권한을 다시 허용해야 합니다. 브라우저를 새로 열 때마다 한 번 필요합니다.";
+  }else{
+    b.innerHTML='<button class="btn btn-p" onclick="pickAuto()">자동 저장 폴더 지정</button>';
+    i.textContent="꺼짐 — 지금은 브라우저 안에만 데이터가 있습니다.";
+  }
+}
+/** 자동 저장이 꺼져 있고 백업까지 밀렸을 때만 경고한다 — 평소에는 조용해야 한다 */
+function renderWarn(){
+  const el=$("warn"); if(!el) return;
+  const n = LASTBK? days(String(LASTBK).slice(0,10),today()) : null;
+  // 지킬 데이터가 없으면 경고하지 않는다
+  if(!PROJ.length || AUTO || (n!==null && n<WARN_DAYS)){ el.hidden=true; el.innerHTML=""; return; }
+  el.hidden=false;
+  el.innerHTML='<div class="card" style="border-color:#E3C4C1;background:#FCF3F2;padding:10px 13px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+    + '<b style="color:var(--late)">백업 없음</b>'
+    + '<span style="flex:1">'+(n===null? "아직 한 번도 백업하지 않았습니다." : "마지막 백업 후 "+n+"일 지났습니다.")
+    + ' 브라우저 데이터가 지워지면 복구할 수 없습니다.</span>'
+    + '<button class="btn btn-p btn-s" onclick="go(\'data\')">자동 저장 설정</button></div>';
+}
+
 /* ---------- 백업 ---------- */
 async function exportJSON(){
   const data=await dumpAll(DB);
@@ -880,7 +1024,10 @@ async function exportJSON(){
   const fname="task-tracker_"+today().replace(/-/g,"")+".json";
   if(window.showSaveFilePicker){
     try{
-      const h=await window.showSaveFilePicker({suggestedName:fname,types:[{description:"JSON",accept:{"application/json":[".json"]}}]});
+      // id를 주면 브라우저가 이 용도의 마지막 폴더를 기억한다. 자동 저장 폴더가 있으면 거기서 연다
+      const opt={suggestedName:fname,id:"tt-backup",types:[{description:"JSON",accept:{"application/json":[".json"]}}]};
+      if(AUTO||AUTO_H) opt.startIn=AUTO||AUTO_H;
+      const h=await window.showSaveFilePicker(opt);
       const w=await h.createWritable(); await w.write(txt); await w.close();
       await stampBackup(); toast("저장했습니다: "+h.name); return;
     }catch(e){ if(e && e.name==="AbortError") return; }
@@ -890,7 +1037,13 @@ async function exportJSON(){
   a.download=fname; a.click(); URL.revokeObjectURL(a.href);
   await stampBackup(); toast("내려받았습니다: "+fname);
 }
-async function stampBackup(){ await put(DB,S.K,{key:"lastBackup",at:new Date().toISOString()}); renderData(); }
+async function stampBackup(auto){
+  const at=new Date().toISOString();
+  LASTBK=at;
+  await put(DB,S.K,{key:"lastBackup",at,auto:!!auto});
+  if(VIEW==="data") renderData();
+  renderWarn();
+}
 function importPick(el){
   const f=el.files&&el.files[0]; el.value="";
   if(!f) return;
@@ -907,9 +1060,18 @@ function importPick(el){
 }
 async function renderData(){
   const [logs,ms,memos,meta]=await Promise.all([allOf(DB,S.L),allOf(DB,S.M),allOf(DB,S.MO),allOf(DB,S.K)]);
-  $("db-info").textContent="과제 "+PROJ.length+" · 기록 "+logs.length+" · 마일스톤 "+ms.length+" · 메모 "+memos.length;
+  $("db-info").textContent="과제 "+PROJ.length+" · 기록 "+logs.length+" · 마일스톤 "+ms.length+" · 메모 "+memos.length
+    + " · 저장소 "+(PERSIST?"보호됨":"보호 안 됨(브라우저가 정리할 수 있음)");
   const b=meta.find(x=>x.key==="lastBackup");
-  $("bk-info").textContent = b? "마지막 백업 "+b.at.slice(0,16).replace("T"," ") : "백업 기록이 없습니다.";
+  $("bk-info").textContent = b? "마지막 백업 "+b.at.slice(0,16).replace("T"," ")+(b.auto?" (자동)":"") : "백업 기록이 없습니다.";
+  renderAuto();
+}
+/** 브라우저가 저장소를 임의로 비우지 못하게 요청 — 사내 정리 정책의 첫 표적이 되는 것을 막는다 */
+async function askPersist(){
+  try{
+    if(!navigator.storage || !navigator.storage.persist) return;
+    PERSIST = await navigator.storage.persisted() || await navigator.storage.persist();
+  }catch(e){}
 }
 async function wipe(){
   if(!confirm("모든 과제·기록·마일스톤·메모를 삭제합니다. 백업이 없으면 복구할 수 없습니다. 계속할까요?")) return;
@@ -917,6 +1079,7 @@ async function wipe(){
   await refresh(); renderData(); toast("전체 삭제했습니다.");
 }
 async function seed(){
+  if(PROJ.length && !confirm("샘플 과제 3건을 현재 데이터에 추가합니다. 실제 과제번호가 발번되며 되돌리려면 직접 삭제해야 합니다. 계속할까요?")) return;
   const d=n=>{ const x=new Date(Date.now()+n*DAY); return ymd(x); };
   const base=[
     {name:"국내 공장 MES 표준화 3단계",division:"식품 제조",reqDept:"Food DX팀",relDepts:["생산관리팀","품질보증팀"],owner:"팀장",investAmount:2400,benefitAmount:1800,benefit:"공정 데이터 표준화로 수율 0.4%p 개선, 수작업 일보 폐지",status:"진행",progress:62,startDate:d(-120),targetDate:d(60),plannedDate:d(75),note:"3공장 우선 적용 후 확산"},
@@ -984,6 +1147,17 @@ async function runTests(){
       return r[0].date==="2026-03-01" && r[2].date==="2026-01-01";
     })());
 
+    ok("스냅샷 파일명 규칙", snapName("2026-08-04")==="task-tracker_20260804.json");
+    ok("스냅샷 정리: 오래된 것만, 한도 내면 없음", (()=>{
+      const names=["task-tracker.json","task-tracker_20260103.json","task-tracker_20260101.json","보고서.xlsx","task-tracker_20260102.json"];
+      const o=oldSnaps(names,2);
+      return o.length===1 && o[0]==="task-tracker_20260101.json" && oldSnaps(names,9).length===0;
+    })());
+    ok("id 소독: onclick에 넣을 수 없는 문자 제거", jid("a-b_C9")==="a-b_C9" && jid("x');alert(1);//")==="xalert1");
+    ok("백업 검증: 위험한 id를 가진 파일 거부", (()=>{
+      try{ parseBackup(JSON.stringify({schema:2,projects:[{id:"x');alert(1);//",name:"A"}]})); return false; }catch(e){ return true; }
+    })());
+
     // 실제 IndexedDB 왕복
     await new Promise(r=>{ const q=indexedDB.deleteDatabase(TDB); q.onsuccess=q.onerror=q.onblocked=()=>r(); });
     const db=await openDB(TDB);
@@ -1030,6 +1204,9 @@ async function refresh(){ PROJ=await allOf(DB,S.P); if(CUR) CUR=PROJ.find(p=>p.i
     document.querySelector("main").innerHTML='<div class="card"><div class="pad">저장소를 열 수 없습니다. 브라우저의 시크릿 모드나 저장 차단 설정을 해제한 뒤 새로 고침하세요.</div></div>';
     return;
   }
+  await askPersist();
+  const bk=await getMeta(DB,"lastBackup"); LASTBK = bk? bk.at : null;
+  await resumeAuto();
   await refresh();
   renderData();
   document.addEventListener("keydown",e=>{
