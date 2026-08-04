@@ -26,6 +26,23 @@ input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
 .top-in{max-width:1440px;margin:0 auto;padding:0 18px;display:flex;align-items:center;gap:22px;height:52px}
 .brand{font-weight:700;letter-spacing:-.02em;font-size:15px;white-space:nowrap}
 .brand span{color:#7FB3B8;font-family:var(--mono);font-weight:400;font-size:11px;margin-left:8px;letter-spacing:.04em}
+.top-date{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#A3B4BC;font-family:var(--mono);background:rgba(255,255,255,0.06);padding:3px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1)}
+.top-date .week-badge{background:var(--accent);color:#FFF;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:10px;line-height:1.2}
+/* ---------- top widget (Eq + Pulse + Typewriter) ---------- */
+.top-widget{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#C2D3D9;font-family:var(--mono);background:rgba(255,255,255,0.05);padding:4px 12px;border-radius:14px;border:1px solid rgba(255,255,255,0.08);max-width:380px;overflow:hidden;white-space:nowrap}
+.eq-bars{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+.eq-bars span{width:2px;background:#0F766E;border-radius:1px;animation:eqWave 0.8s infinite ease-in-out alternate}
+.eq-bars span:nth-child(1){height:30%;animation-delay:0s}
+.eq-bars span:nth-child(2){height:90%;animation-delay:0.2s}
+.eq-bars span:nth-child(3){height:50%;animation-delay:0.4s}
+.eq-bars span:nth-child(4){height:100%;animation-delay:0.1s}
+@keyframes eqWave{0%{height:25%;background:#0F766E}100%{height:100%;background:#7FB3B8}}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:#0F766E;box-shadow:0 0 0 0 rgba(15,118,110,0.7);animation:pulseGlow 1.8s infinite;flex-shrink:0}
+@keyframes pulseGlow{0%{transform:scale(0.95);box-shadow:0 0 0 0 rgba(15,118,110,0.7)}70%{transform:scale(1);box-shadow:0 0 0 6px rgba(15,118,110,0)}100%{transform:scale(0.95);box-shadow:0 0 0 0 rgba(15,118,110,0)}}
+.typewriter-txt{display:inline-flex;align-items:center;color:#EDF1F2;font-size:11.5px;letter-spacing:-.01em}
+.typewriter-txt .cursor{color:#7FB3B8;font-weight:700;margin-left:2px;animation:blink 0.8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
 .tabs{display:flex;gap:2px;margin-left:auto}
 .tab{background:none;border:0;color:#9FAEB4;padding:7px 13px;border-radius:var(--r);font-weight:500}
 .tab:hover{color:#fff;background:#1E2830}
@@ -188,6 +205,13 @@ footer span{font-family:var(--mono)}
 <header class="top">
   <div class="top-in">
     <div class="brand">과제 추적관리<span>TASK TRACKER</span></div>
+
+    <div class="top-date" id="top-date"></div>
+    <div class="top-widget" id="top-widget">
+      <div class="eq-bars"><span></span><span></span><span></span><span></span></div>
+      <div class="pulse-dot"></div>
+      <div class="typewriter-txt"><span id="type-target"></span><span class="cursor">|</span></div>
+    </div>
     <nav class="tabs" role="tablist">
       <button class="tab" id="tab-list" role="tab" aria-selected="true" onclick="go('list')">전체 과제</button>
       <button class="tab" id="tab-data" role="tab" aria-selected="false" onclick="go('data')">백업 · 점검</button>
@@ -202,7 +226,7 @@ footer span{font-family:var(--mono)}
     <div class="kpis" id="kpis"></div>
 
     <div class="bar">
-      <input type="search" id="q" placeholder="과제명 · 부서 · 기대성과 검색" oninput="setF('q',this.value)">
+      <input type="search" id="q" placeholder="과제명 · 부서 · 기대성과 검색" oninput="onSearchInput(this.value)">
       <select id="f-div" onchange="setF('div',this.value)"><option value="">부문 전체</option></select>
       <select id="f-dept" onchange="setF('dept',this.value)"><option value="">품의부서 전체</option></select>
       <select id="f-st" onchange="setF('st',this.value)">
@@ -211,7 +235,7 @@ footer span{font-family:var(--mono)}
       <label class="chk"><input type="checkbox" id="f-late" onchange="setF('late',this.checked)">지연·주의만</label>
       <button class="btn btn-s" onclick="resetF()">필터 해제</button>
       <span class="spacer"></span>
-      <button class="btn btn-p" onclick="openEdit()">+ 과제 등록</button>
+      <button class="btn btn-p" onclick="openEdit()" title="Alt+N">+ 과제 등록</button>
     </div>
 
     <div class="tw"><table id="tbl">
@@ -269,6 +293,19 @@ footer span{font-family:var(--mono)}
           <table class="tests" id="t-out"></table>
         </div>
       </div>
+
+      <div class="card">
+        <div class="pad">
+          <h3 class="mini">상단 전광판 문구 관리</h3>
+          <p>상단 헤더 전광판에 타이핑될 브리핑 문구를 자유롭게 등록·수정·삭제합니다.</p>
+          <div class="bar" style="margin-bottom:8px">
+            <input type="text" id="new-ticker-input" placeholder="새 전광판 문구 입력" style="flex:1" onkeydown="if(event.key==='Enter')addTickerMsg()">
+            <button class="btn btn-p btn-s" onclick="addTickerMsg()">+ 추가</button>
+            <button class="btn btn-s" onclick="resetTickerMsgs()">기본값 복원</button>
+          </div>
+          <div id="ticker-msg-list" style="display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto;margin-top:8px"></div>
+        </div>
+      </div>
     </div>
   </section>
 </main>
@@ -276,8 +313,7 @@ footer span{font-family:var(--mono)}
 <footer>
   <span id="ft-cnt"></span>
   <span class="spacer"></span>
-  <span>단일 HTML · 오프라인 · IndexedDB</span>
-  <span>Provided by Food DX team &amp; BDK</span>
+  <span>Provided by Manufacturing DX team</span>
 </footer>
 
 <div class="ov" id="ov" hidden onclick="if(event.target===this)closeEdit()">
@@ -314,8 +350,9 @@ function ymd(d){
 }
 function isDate(s){
   if(typeof s!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const d=new Date(t(s));
-  return !isNaN(d.getTime()) && ymd(new Date(d.getTime()+d.getTimezoneOffset()*60000))===s;
+  const [y,m,d] = s.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  return dt.getFullYear()===y && dt.getMonth()===m-1 && dt.getDate()===d;
 }
 function t(s){ if(typeof s!=="string") return NaN; const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return NaN; return Date.UTC(+m[1],+m[2]-1,+m[3]); }
 function days(a,b){ const x=t(a),y=t(b); if(isNaN(x)||isNaN(y)) return null; return Math.round((y-x)/DAY); }
@@ -440,22 +477,45 @@ function summarize(list){
 /** 레코드 id 허용 형식 — uid()가 만드는 값의 범위. 백업으로 들어오는 값은 신뢰하지 않는다 */
 function okId(x){ return !!x && typeof x.id==="string" && /^[A-Za-z0-9_-]{1,64}$/.test(x.id); }
 
+/** 백업 데이터 정규화 */
+function normProject(p){
+  return {...p,
+    name: String(p.name||""),
+    status: STATUS.includes(p.status) ? p.status : "계획",
+    progress: clamp(Number(p.progress)||0, 0, 100),
+    investAmount: Number(p.investAmount)||0,
+    benefitAmount: Number(p.benefitAmount)||0,
+    relDepts: Array.isArray(p.relDepts) ? p.relDepts.map(String)
+      : String(p.relDepts||"").split(",").map(s=>s.trim()).filter(Boolean),
+    startDate: isDate(p.startDate) ? p.startDate : "",
+    targetDate: isDate(p.targetDate) ? p.targetDate : "",
+    plannedDate: isDate(p.plannedDate) ? p.plannedDate : "",
+  };
+}
+
 /** 백업 파일 형태 검증 및 정규화 */
 function parseBackup(raw){
   let o;
   try{ o=JSON.parse(raw); }catch(err){ throw new Error("JSON 형식이 아닙니다."); }
   if(!o || typeof o!=="object") throw new Error("내용이 비어 있습니다.");
   if(!Array.isArray(o.projects)) throw new Error("projects 배열이 없습니다.");
+  if(Number(o.schema||1) > 2) throw new Error("더 새 버전에서 만들어진 백업입니다.");
+
   const r={
     schema: o.schema||1,
     projects: o.projects,
     logs: Array.isArray(o.logs)? o.logs : [],
     milestones: Array.isArray(o.milestones)? o.milestones : [],
-    memos: Array.isArray(o.memos)? o.memos : []   // schema 1 백업에는 없다
+    memos: Array.isArray(o.memos)? o.memos : []
   };
-  // id가 화면의 onclick에 그대로 들어가므로 형식을 어기는 파일은 통째로 거부한다
-  if(![].concat(r.projects,r.logs,r.milestones,r.memos).every(okId))
+
+  const allRecs = [].concat(r.projects, r.logs, r.milestones, r.memos);
+  if(!allRecs.every(okId))
     throw new Error("레코드 id 형식이 올바르지 않습니다. 손상되었거나 신뢰할 수 없는 파일입니다.");
+  if(new Set(allRecs.map(x=>x.id)).size !== allRecs.length)
+    throw new Error("중복된 id가 있습니다. 손상된 파일입니다.");
+
+  r.projects = r.projects.map(normProject);
   return r;
 }
 function mergeById(cur,inc){
@@ -542,7 +602,16 @@ async function loadAll(db,data,mode){
   autoSave(db);
   return {p:P.length,l:L.length,m:M.length,mo:MO.length};
 }
-/** 과제 저장 시 메모 변경분 반영 — 삭제된 id 정리 후 현재 목록을 그대로 기록 */
+/** 과제+메모 동시 저장 (트랜잭션 원자성 보장) */
+async function saveProjectWithMemos(db, p, memos, removedIds){
+  const tr = tx(db, [S.P, S.MO], "readwrite");
+  tr.objectStore(S.P).put(p);
+  (removedIds||[]).forEach(id => tr.objectStore(S.MO).delete(id));
+  memos.forEach(x=>{ const {_new, ...rec} = x; tr.objectStore(S.MO).put({...rec, projectId:p.id}); });
+  await done(tr);
+  autoSave(db);
+}
+/** 하위 호환 및 테스트용 보존 함수 */
 async function syncMemos(db,pid,memos,removedIds){
   const tr=tx(db,[S.MO],"readwrite");
   (removedIds||[]).forEach(id=>tr.objectStore(S.MO).delete(id));
@@ -564,13 +633,17 @@ let DB=null, PROJ=[], VIEW="list", CUR=null;
 let F={q:"",div:"",dept:"",st:"",late:false,sort:"targetDate",desc:false};
 // AUTO = 쓰기 권한이 확인된 폴더, AUTO_H = 저장돼 있으나 아직 권한 재확인 전인 폴더
 let AUTO=null, AUTO_H=null, AUTO_T=null, LASTBK=null, PERSIST=false;
+let FLUSHING = false, AUTO_PENDING = false;
+let qTimer = null;
+
+const guard = fn => async (...a)=>{ try{ await fn(...a); }catch(e){ console.error(e); toast("처리 실패: " + e.message); } };
 
 const COLS=[
-  {k:"status",  t:"상태",     w:""},
-  {k:"name",    t:"과제명",   w:""},
-  {k:"division",t:"부문",     w:""},
-  {k:"reqDept", t:"품의부서", w:""},
-  {k:"relDepts",t:"유관부서", w:"",nosort:true},
+  {k:"status",  t:"상태"},
+  {k:"name",    t:"과제명"},
+  {k:"division",t:"부문"},
+  {k:"reqDept", t:"품의부서"},
+  {k:"relDepts",t:"유관부서", nosort:true},
   {k:"invest",  t:"투자금액(백만)", r:true},
   {k:"benefit", t:"기대성과", nosort:true},
   {k:"startDate",t:"착수"},
@@ -595,8 +668,18 @@ function go(v){
   if(v==="list") renderList();
   window.scrollTo(0,0);
 }
+
+function onSearchInput(v){
+  clearTimeout(qTimer);
+  qTimer = setTimeout(()=> setF('q', v), 200);
+}
 function setF(k,v){ F[k]=v; renderList(); }
-function resetF(){ F={...F,q:"",div:"",dept:"",st:"",late:false}; $("q").value=""; $("f-div").value=""; $("f-dept").value=""; $("f-st").value=""; $("f-late").checked=false; renderList(); }
+function resetF(){
+  clearTimeout(qTimer);
+  F={...F,q:"",div:"",dept:"",st:"",late:false};
+  $("q").value=""; $("f-div").value=""; $("f-dept").value=""; $("f-st").value=""; $("f-late").checked=false;
+  renderList();
+}
 function sortBy(k){ if(F.sort===k) F.desc=!F.desc; else { F.sort=k; F.desc=false; } renderList(); }
 
 function trackHTML(p,d,big){
@@ -639,7 +722,7 @@ function renderList(){
   if(!rows.length){
     $("tbd").innerHTML='<tr><td colspan="'+COLS.length+'"><div class="empty">'
       + (PROJ.length? '<p>조건에 맞는 과제가 없습니다.</p><button class="btn" onclick="resetF()">필터 해제</button>'
-                    : '<p>등록된 과제가 없습니다. 먼저 과제를 하나 만들어 보세요.</p><button class="btn btn-p" onclick="openEdit()">+ 과제 등록</button> <button class="btn" onclick="seed()">샘플 넣기</button>')
+                    : '<p>등록된 과제가 없습니다. 먼저 과제를 하나 만들어 보세요.</p><button class="btn btn-p" onclick="openEdit()" title="Alt+N">+ 과제 등록</button> <button class="btn" onclick="seed()">샘플 넣기</button>')
       + '</div></td></tr>';
   }else{
     $("tbd").innerHTML=rows.map(p=>{
@@ -658,7 +741,7 @@ function renderList(){
         + '<td class="num">'+esc(p.plannedDate||"-")+"</td>"
         + '<td class="r num">'+(Number(p.progress)||0)+"%</td>"
         + "<td>"+trackHTML(p,d)+'<div class="sig sig-'+d.sig.k+'">'+esc(d.sig.label)+"</div></td>"
-        + '<td class="r num sig-'+d.sig.k+'">'+ddayText(d.dday)+"</td>"
+        + '<td class="r num sig-'+d.sig.k+'">'+(p.status==="완료"||p.status==="중단" ? "-" : ddayText(d.dday))+"</td>"
         + "</tr>";
     }).join("");
   }
@@ -673,14 +756,17 @@ function fillOpt(id,vals,cur,head){
 }
 function cut(s,n){ s=String(s||""); return s.length>n? s.slice(0,n)+"…" : (s||"-"); }
 function thisMonthLabel(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); }
-function monthDue(rows){ const m=thisMonthLabel(); return rows.filter(p=>isDate(p.targetDate)&&p.targetDate.slice(0,7)===m).length; }
+function monthDue(rows){
+  const m=thisMonthLabel();
+  return rows.filter(p=>isDate(p.targetDate)&&p.targetDate.slice(0,7)===m && p.status!=="완료" && p.status!=="중단").length;
+}
 
 /* ---------- 상세 ---------- */
 async function openDetail(id){
   CUR=PROJ.find(p=>p.id===id);
   if(!CUR) return;
   const [logs,ms,memos]=await Promise.all([byProject(DB,S.L,id),byProject(DB,S.M,id),byProject(DB,S.MO,id)]);
-  logs.sort((a,b)=> String(b.date).localeCompare(String(a.date)));
+  logs.sort((a,b)=> String(b.date).localeCompare(String(a.date)) || String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
   ms.sort((a,b)=> String(a.planDate||"9999").localeCompare(String(b.planDate||"9999")));
   sortMemos(memos);
   renderDetail(CUR,logs,ms,memos);
@@ -701,7 +787,7 @@ function renderDetail(p,logs,ms,memos){
   +     '<span class="sig sig-'+d.sig.k+'">'+esc(d.sig.label)+"</span></div>"
   +   '<div class="pad">'
   +     trackHTML(p,d,true)
-  +     '<div class="tlegend"><span>실적 '+(Number(p.progress)||0)+"%</span><span>계획 "+(d.plan===null?"-":d.plan+"%")+"</span><span>목표일 "+esc(p.targetDate||"-")+" ("+ddayText(d.dday)+")</span><span>예정일 "+esc(p.plannedDate||"-")+(d.over>0?" · 목표 대비 +"+d.over+"일":"")+"</span></div>"
+  +     '<div class="tlegend"><span>실적 '+(Number(p.progress)||0)+"%</span><span>계획 "+(d.plan===null?"-":d.plan+"%")+"</span><span>목표일 "+esc(p.targetDate||"-")+" ("+(p.status==="완료"||p.status==="중단"?"-":ddayText(d.dday))+")</span><span>예정일 "+esc(p.plannedDate||"-")+(d.over>0?" · 목표 대비 +"+d.over+"일":"")+"</span></div>"
   +   "</div>"
   +   '<dl class="meta" style="margin:0">'
   +     m("부문",esc(p.division||"-")) + m("품의부서",esc(p.reqDept||"-"))
@@ -792,7 +878,7 @@ function sparkHTML(p,logs){
 }
 
 /* ---------- 하위 기록 CRUD ---------- */
-async function addLog(){
+const addLog = guard(async () => {
   const date=$("lg-date").value, body=$("lg-body").value.trim();
   if(!isDate(date)) return toast("날짜를 확인하세요.");
   if(!body) return toast("진행 내용을 입력하세요.");
@@ -801,28 +887,33 @@ async function addLog(){
   await put(DB,S.L,{id:uid(),projectId:CUR.id,date,type:$("lg-type").value,progress:pr===""?null:Number(pr),content:body,next:$("lg-next").value.trim(),createdAt:new Date().toISOString()});
   if(pr!==""){ CUR.progress=Number(pr); CUR.updatedAt=new Date().toISOString(); await put(DB,S.P,CUR); }
   await refresh(); await openDetail(CUR.id); toast("기록을 추가했습니다.");
-}
-async function removeLog(id){ await del(DB,S.L,id); await openDetail(CUR.id); toast("기록을 삭제했습니다."); }
-async function addMs(){
+});
+const removeLog = guard(async (id) => {
+  await del(DB,S.L,id); await openDetail(CUR.id);
+  toast("기록을 삭제했습니다. (과제 진척률은 유지됩니다)");
+});
+const addMs = guard(async () => {
   const name=$("ms-name").value.trim();
   if(!name) return toast("마일스톤명을 입력하세요.");
   const pd=$("ms-plan").value;
   if(pd&&!isDate(pd)) return toast("계획일을 확인하세요.");
   await put(DB,S.M,{id:uid(),projectId:CUR.id,name,planDate:pd||"",actualDate:"",createdAt:new Date().toISOString()});
   await openDetail(CUR.id); toast("마일스톤을 추가했습니다.");
-}
-async function toggleMs(id){
+});
+const toggleMs = guard(async (id) => {
   const list=await byProject(DB,S.M,CUR.id);
   const x=list.find(v=>v.id===id); if(!x) return;
   x.actualDate = x.actualDate? "" : today();
   await put(DB,S.M,x); await openDetail(CUR.id);
-}
-async function removeMs(id){ await del(DB,S.M,id); await openDetail(CUR.id); }
-async function removeProject(id){
+});
+const removeMs = guard(async (id) => {
+  await del(DB,S.M,id); await openDetail(CUR.id);
+});
+const removeProject = guard(async (id) => {
   const p=PROJ.find(v=>v.id===id); if(!p) return;
   if(!confirm("["+p.name+"] 과제와 하위 기록·마일스톤을 모두 삭제합니다. 계속할까요?")) return;
   await deleteProject(DB,id); await refresh(); go("list"); toast("과제를 삭제했습니다.");
-}
+});
 
 /* ---------- 등록/수정 모달 ---------- */
 const FIELDS=[
@@ -897,7 +988,8 @@ function dropMemo(id){
   MEMOS.splice(i,1);
   renderMemoEdit();
 }
-async function saveEdit(){
+
+const saveEdit = guard(async () => {
   const g=k=>{ const e=$("f-"+k); return e? e.value.trim() : ""; };
   const base = EDIT_ID? {...PROJ.find(x=>x.id===EDIT_ID)} : {id:uid(),code:nextCode(PROJ),createdAt:new Date().toISOString()};
   const p={...base,
@@ -911,34 +1003,37 @@ async function saveEdit(){
     benefit:g("benefit"), note:g("note"), updatedAt:new Date().toISOString()};
   const errs=validate(p);
   if(errs.length){ $("md-err").textContent=errs.join(" "); return; }
-  await put(DB,S.P,p);
-  await syncMemos(DB,p.id,MEMOS,MEMOS_DEL);
+  
+  await saveProjectWithMemos(DB, p, MEMOS, MEMOS_DEL);
+  
   closeEdit(); await refresh();
   if(VIEW==="detail") await openDetail(p.id); else renderList();
   toast(EDIT_ID?"과제를 수정했습니다.":"과제를 등록했습니다.");
-}
+});
 
 /* ---------- 자동 저장 ---------- */
 /** 변경 직후 호출 — 연속 입력은 모았다가 한 번만 기록한다 */
 function autoSave(db){
   if(db!==DB || !AUTO) return;
+  AUTO_PENDING = true;
   clearTimeout(AUTO_T);
-  AUTO_T=setTimeout(flushAuto,2500);
+  AUTO_T = setTimeout(flushAuto, 2500);
 }
-let FLUSHING=false;
 async function flushAuto(){
   if(!AUTO || FLUSHING) return;
-  FLUSHING=true;
+  FLUSHING = true; AUTO_PENDING = false;
   try{
-    // 세션 중에도 권한이 회수될 수 있다 — 쓰기 직전에 확인한다
     if(await AUTO.queryPermission({mode:"readwrite"})!=="granted"){ AUTO=null; renderAuto(); renderWarn(); return; }
-    const txt=JSON.stringify(await dumpAll(DB),null,2);
-    await writeFile(AUTO,AUTO_FILE,txt);
+    const txt = JSON.stringify(await dumpAll(DB), null, 2);
+    await writeFile(AUTO, AUTO_FILE, txt);
     await snapshot(txt);
     await stampBackup(true);
   }catch(e){
-    toast("자동 저장 실패: "+e.message);
-  }finally{ FLUSHING=false; }
+    toast("자동 저장 실패: " + e.message);
+  }finally{
+    FLUSHING = false;
+    if(AUTO_PENDING && AUTO) flushAuto();
+  }
 }
 /** 하루 한 번만 스냅샷을 남기고 보관 한도를 넘긴 옛 파일을 지운다 */
 async function snapshot(txt){
@@ -951,24 +1046,28 @@ async function snapshot(txt){
   for await(const n of AUTO.keys()) names.push(n);
   for(const n of oldSnaps(names,SNAP_KEEP)) await AUTO.removeEntry(n);
 }
-async function pickAuto(){
+
+const pickAuto = guard(async () => {
   if(!window.showDirectoryPicker) return toast("이 브라우저는 자동 저장을 지원하지 않습니다.");
   let dir;
   try{ dir=await window.showDirectoryPicker({id:"tt-backup",mode:"readwrite",startIn:"documents"}); }
-  catch(e){ return; }                                  // 사용자가 취소한 경우
+  catch(e){
+    if(e && e.name!=="AbortError") toast("폴더 선택 실패: "+e.message);
+    return;
+  }
   if(await dir.requestPermission({mode:"readwrite"})!=="granted") return toast("폴더 쓰기 권한이 필요합니다.");
   AUTO=dir; AUTO_H=dir;
   await put(DB,S.K,{key:"autoDir",handle:dir,at:new Date().toISOString()});
   await flushAuto();
   renderAuto(); renderWarn();
   toast("자동 저장을 켰습니다 — "+dir.name);
-}
-async function stopAuto(){
+});
+const stopAuto = guard(async () => {
   AUTO=null; AUTO_H=null;
   await del(DB,S.K,"autoDir");
   renderAuto(); renderWarn();
   toast("자동 저장을 껐습니다.");
-}
+});
 /** 새 세션에서는 권한이 'prompt'로 돌아간다 — 재승인은 사용자 클릭 없이는 불가능하다 */
 async function resumeAuto(){
   const rec=await getMeta(DB,"autoDir");
@@ -976,7 +1075,7 @@ async function resumeAuto(){
   AUTO_H=rec.handle;
   try{ if(await AUTO_H.queryPermission({mode:"readwrite"})==="granted") AUTO=AUTO_H; }catch(e){}
 }
-async function grantAuto(){
+const grantAuto = guard(async () => {
   if(!AUTO_H) return;
   try{
     if(await AUTO_H.requestPermission({mode:"readwrite"})!=="granted") return toast("권한이 거부되었습니다.");
@@ -985,7 +1084,7 @@ async function grantAuto(){
   await flushAuto();
   renderAuto(); renderWarn();
   toast("자동 저장을 다시 연결했습니다.");
-}
+});
 function renderAuto(){
   const b=$("auto-btns"), i=$("auto-info");
   if(!b) return;
@@ -994,7 +1093,7 @@ function renderAuto(){
     i.textContent="이 브라우저는 자동 저장을 지원하지 않습니다. Chrome·Edge에서 열거나 주 1회 직접 내보내기 하세요.";
   }else if(AUTO){
     b.innerHTML='<button class="btn" onclick="flushAuto()">지금 저장</button><button class="btn btn-d" onclick="stopAuto()">자동 저장 끄기</button>';
-    i.textContent="켜짐 — "+AUTO.name+" 폴더에 "+AUTO_FILE+" 기록, 일자별 스냅샷 "+SNAP_KEEP+"개 보관";
+    i.textContent="켜짐 — "+AUTO.name+" 폴더에 "+AUTO_FILE+" 기록, 일자별 스냅샷 "+SNAP_KEEP+"개 보관. (여러 PC에서 같은 폴더를 지정하면 서로 덮어씁니다. 한 PC에서만 사용하세요.)";
   }else if(AUTO_H){
     b.innerHTML='<button class="btn btn-p" onclick="grantAuto()">폴더 다시 연결</button><button class="btn btn-d" onclick="stopAuto()">해제</button>';
     i.textContent="연결 끊김 — "+AUTO_H.name+" 폴더 권한을 다시 허용해야 합니다. 브라우저를 새로 열 때마다 한 번 필요합니다.";
@@ -1018,7 +1117,7 @@ function renderWarn(){
 }
 
 /* ---------- 백업 ---------- */
-async function exportJSON(){
+const exportJSON = guard(async () => {
   const data=await dumpAll(DB);
   const txt=JSON.stringify(data,null,2);
   const fname="task-tracker_"+today().replace(/-/g,"")+".json";
@@ -1034,9 +1133,10 @@ async function exportJSON(){
   }
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([txt],{type:"application/json"}));
-  a.download=fname; a.click(); URL.revokeObjectURL(a.href);
+  a.download=fname; a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 10000);
   await stampBackup(); toast("내려받았습니다: "+fname);
-}
+});
 async function stampBackup(auto){
   const at=new Date().toISOString();
   LASTBK=at;
@@ -1065,6 +1165,7 @@ async function renderData(){
   const b=meta.find(x=>x.key==="lastBackup");
   $("bk-info").textContent = b? "마지막 백업 "+b.at.slice(0,16).replace("T"," ")+(b.auto?" (자동)":"") : "백업 기록이 없습니다.";
   renderAuto();
+  renderTickerAdmin();
 }
 /** 브라우저가 저장소를 임의로 비우지 못하게 요청 — 사내 정리 정책의 첫 표적이 되는 것을 막는다 */
 async function askPersist(){
@@ -1073,12 +1174,12 @@ async function askPersist(){
     PERSIST = await navigator.storage.persisted() || await navigator.storage.persist();
   }catch(e){}
 }
-async function wipe(){
+const wipe = guard(async () => {
   if(!confirm("모든 과제·기록·마일스톤·메모를 삭제합니다. 백업이 없으면 복구할 수 없습니다. 계속할까요?")) return;
   await loadAll(DB,{projects:[],logs:[],milestones:[],memos:[]},"replace");
   await refresh(); renderData(); toast("전체 삭제했습니다.");
-}
-async function seed(){
+});
+const seed = guard(async () => {
   if(PROJ.length && !confirm("샘플 과제 3건을 현재 데이터에 추가합니다. 실제 과제번호가 발번되며 되돌리려면 직접 삭제해야 합니다. 계속할까요?")) return;
   const d=n=>{ const x=new Date(Date.now()+n*DAY); return ymd(x); };
   const base=[
@@ -1087,10 +1188,11 @@ async function seed(){
     {name:"해외 신규 공장 MES 구축",division:"글로벌",reqDept:"Food DX팀",relDepts:["해외사업팀","SCM팀"],owner:"PM",investAmount:5200,benefitAmount:0,benefit:"신공장 가동 시점 시스템 동시 오픈, 인증 요건 대응",status:"계획",progress:8,startDate:d(-20),targetDate:d(240),plannedDate:d(240)}
   ];
   const now=new Date().toISOString();
-  let code=nextCode(PROJ);
+  let currentProj = [...PROJ];
+  
   for(const b of base){
+    const code = nextCode(currentProj);
     const p={...b,id:uid(),code,createdAt:now,updatedAt:now};
-    code = nextCode([...PROJ,{code}]);
     await put(DB,S.P,p);
     if(b.progress>20){
       await put(DB,S.L,{id:uid(),projectId:p.id,date:d(-30),type:"진척",progress:Math.max(10,b.progress-20),content:"요건 정의 완료, 개발 착수",next:"단위 테스트 계획 확정",createdAt:now});
@@ -1100,10 +1202,11 @@ async function seed(){
       await put(DB,S.MO,{id:uid(),projectId:p.id,date:d(-21),content:"현장 실사 결과 양호 — 설비 추가 없이 진행 가능",createdAt:now});
       await put(DB,S.MO,{id:uid(),projectId:p.id,date:d(-3),content:"임원 보고 시 투자금 집행 계획 재확인 필요",createdAt:now});
     }
-    PROJ=await allOf(DB,S.P);
+    currentProj = await allOf(DB,S.P);
   }
+  PROJ = currentProj;
   await refresh(); go("list"); toast("샘플 과제를 넣었습니다.");
-}
+});
 
 /* =====================================================================
    4. 자체 점검
@@ -1158,6 +1261,19 @@ async function runTests(){
       try{ parseBackup(JSON.stringify({schema:2,projects:[{id:"x');alert(1);//",name:"A"}]})); return false; }catch(e){ return true; }
     })());
 
+    ok("정규화: 비정형 relDepts·문자열 progress 복구", (()=>{
+      const p = normProject({id:"a", name:"A", relDepts:"팀A, 팀B", progress:"55", status:"없는값"});
+      return Array.isArray(p.relDepts) && p.relDepts.length===2 && p.progress===55 && p.status==="계획";
+    })());
+    ok("백업 검증: 중복 id 거부", (()=>{
+      try{ parseBackup(JSON.stringify({schema:2,projects:[{id:"a"},{id:"a"}]})); return false; }
+      catch(e){ return true; }
+    })());
+    ok("백업 검증: 미래 schema 거부", (()=>{
+      try{ parseBackup(JSON.stringify({schema:9,projects:[{id:"a"}]})); return false; }
+      catch(e){ return true; }
+    })());
+
     // 실제 IndexedDB 왕복
     await new Promise(r=>{ const q=indexedDB.deleteDatabase(TDB); q.onsuccess=q.onerror=q.onblocked=()=>r(); });
     const db=await openDB(TDB);
@@ -1196,8 +1312,143 @@ async function runTests(){
 /* =====================================================================
    5. 기동
    ===================================================================== */
+
+
+const DEFAULT_TICKERS = [
+  "시스템 실시간 모니터링 가동 중",
+  "이번 주 완료 예정 과제 2건 진행 중",
+  "IndexedDB 자동 백업 보호 활성화",
+  "전체 평균 진척률 정상 궤도 유지"
+];
+
+function getTickerMessages(){
+  try{
+    const s = localStorage.getItem("tt_ticker_msgs");
+    if(s){
+      const arr = JSON.parse(s);
+      if(Array.isArray(arr) && arr.length > 0) return arr;
+    }
+  }catch(e){}
+  return [...DEFAULT_TICKERS];
+}
+
+function saveTickerMessages(list){
+  const cleanList = list.filter(m => typeof m === "string" && m.trim().length > 0);
+  localStorage.setItem("tt_ticker_msgs", JSON.stringify(cleanList.length ? cleanList : DEFAULT_TICKERS));
+  renderTickerAdmin();
+}
+
+function addTickerMsg(){
+  const input = $("new-ticker-input");
+  if(!input) return;
+  const txt = input.value.trim();
+  if(!txt) return;
+  const list = getTickerMessages();
+  list.push(txt);
+  saveTickerMessages(list);
+  input.value = "";
+  toast("전광판 문구가 추가되었습니다.");
+}
+
+function deleteTickerMsg(idx){
+  const list = getTickerMessages();
+  if(list.length <= 1){
+    toast("최소 1개 이상의 문구가 필요합니다.");
+    return;
+  }
+  list.splice(idx, 1);
+  saveTickerMessages(list);
+  toast("문구가 삭제되었습니다.");
+}
+
+function editTickerMsg(idx){
+  const list = getTickerMessages();
+  const oldVal = list[idx] || "";
+  const newVal = prompt("전광판 문구 수정:", oldVal);
+  if(newVal !== null && newVal.trim() !== ""){
+    list[idx] = newVal.trim();
+    saveTickerMessages(list);
+    toast("문구가 수정되었습니다.");
+  }
+}
+
+function resetTickerMsgs(){
+  if(!confirm("기본 문구 세트로 복원할까요?")) return;
+  localStorage.removeItem("tt_ticker_msgs");
+  renderTickerAdmin();
+  toast("기본 문구로 복원되었습니다.");
+}
+
+function renderTickerAdmin(){
+  const container = $("ticker-msg-list");
+  if(!container) return;
+  const list = getTickerMessages();
+  container.innerHTML = list.map((msg, i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--paper);padding:5px 9px;border-radius:var(--r);font-size:12px;border:1px solid var(--line2)">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72%">${esc(msg)}</span>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editTickerMsg(${i})">수정</button>
+        <button class="btn btn-s btn-d" onclick="deleteTickerMsg(${i})">삭제</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function initTopWidget(){
+  const target = $("type-target");
+  if(!target) return;
+  let msgIdx = 0, charIdx = 0, isDeleting = false;
+
+  function typeStep(){
+    const messages = getTickerMessages();
+    if(msgIdx >= messages.length) msgIdx = 0;
+    const currentMsg = messages[msgIdx] || "과제 추적관리";
+
+    if(isDeleting){
+      target.textContent = currentMsg.substring(0, charIdx--);
+      if(charIdx < 0){
+        isDeleting = false;
+        msgIdx = (msgIdx + 1) % messages.length;
+        setTimeout(typeStep, 400);
+        return;
+      }
+    } else {
+      target.textContent = currentMsg.substring(0, charIdx++);
+      if(charIdx > currentMsg.length){
+        isDeleting = true;
+        setTimeout(typeStep, 2800);
+        return;
+      }
+    }
+    setTimeout(typeStep, isDeleting ? 35 : 75);
+  }
+  typeStep();
+}
+
+function renderHeaderDate() {
+  const el = $("top-date");
+  if (!el) return;
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const dayName = days[now.getDay()];
+
+  const target = new Date(now.valueOf());
+  const dayNr = (now.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const dayDiff = (target - firstThursday) / 86400000;
+  const weekNum = 1 + Math.round(dayDiff / 7);
+
+  el.innerHTML = `<span>${yyyy}.${mm}.${dd} (${dayName})</span><span class="week-badge">${weekNum}주차</span>`;
+}
+
 async function refresh(){ PROJ=await allOf(DB,S.P); if(CUR) CUR=PROJ.find(p=>p.id===CUR.id)||null; renderList(); }
 (async function init(){
+  renderHeaderDate();
+  initTopWidget();
   try{
     DB=await openDB();
   }catch(e){
@@ -1209,9 +1460,25 @@ async function refresh(){ PROJ=await allOf(DB,S.P); if(CUR) CUR=PROJ.find(p=>p.i
   await resumeAuto();
   await refresh();
   renderData();
-  document.addEventListener("keydown",e=>{
-    if(e.key==="Escape"){ if(!$("ov").hidden) closeEdit(); else if(VIEW==="detail") go("list"); }
-    if(e.key==="n"&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); openEdit(); }
+  
+  document.addEventListener("keydown", e => {
+    const isInput = ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName);
+    if (e.key === "Escape") {
+      if (!$("ov").hidden) closeEdit();
+      else if (VIEW === "detail") go("list");
+    }
+    if ((e.key === "n" || e.key === "N") && e.altKey) {
+      if (isInput) return;
+      e.preventDefault();
+      if ($("ov").hidden) openEdit();
+    }
+  });
+
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState === "hidden" && AUTO){
+      clearTimeout(AUTO_T);
+      flushAuto();
+    }
   });
 })();
 </script>
